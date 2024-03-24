@@ -2,5 +2,5 @@
 
 members = [
     "libswifft-sys",
-    "libswifft-rs"
+    "libswifft"
 ]
