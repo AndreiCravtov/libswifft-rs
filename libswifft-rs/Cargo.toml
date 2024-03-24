@@ -6,4 +6,4 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-libswifft_sys = { path = "../libswifft-sys" }
+libswifft_sys = { path = "../libswifft-sys", version = "0.1.0" }
