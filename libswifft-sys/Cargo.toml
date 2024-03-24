@@ -1,9 +1,11 @@
 [package]
 name = "libswifft_sys"
-version = "0.1.0"
 links = "LibSWIFFT"
-build = "build.rs"
+description = ""
+licence = ""
+version = "0.1.0"
 edition = "2021"
+build = "build.rs"
 
 [build-dependencies]
 bindgen = "0.69.4"
