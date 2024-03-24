@@ -1,0 +1,7 @@
+[package]
+name = "libswifft"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+libswifft_sys = { path = "../libswifft-sys" }

@@ -1,0 +1,10 @@
+[package]
+name = "libswifft_sys"
+version = "0.1.0"
+links = "LibSWIFFT"
+build = "build.rs"
+edition = "2021"
+
+[build-dependencies]
+bindgen = "0.69.4"
+cmake = "0.1.50"

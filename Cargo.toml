@@ -1,0 +1,6 @@
+[workspace]
+
+members = [
+    "libswifft-sys",
+    "libswifft-rs"
+]
