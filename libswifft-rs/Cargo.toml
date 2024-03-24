@@ -1,5 +1,7 @@
 [package]
 name = "libswifft"
+description = "To be done"
+license = "MIT OR Apache-2.0"
 version = "0.1.0"
 edition = "2021"
 
