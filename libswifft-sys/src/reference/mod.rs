@@ -20,10 +20,6 @@
 //!
 //! ## Note on Safety
 //! While `libswifft` aims to provide a safe abstraction over the `LibSWIFFT` library, users should be aware that...
-
-
-pub mod bindgen_ffi;
-pub mod buffer;
+pub mod constant;
 pub mod hash;
-pub mod arithmetic;
-pub mod reference;
+pub mod polynomial;

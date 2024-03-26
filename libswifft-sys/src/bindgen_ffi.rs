@@ -22,8 +22,7 @@
 //! While `libswifft` aims to provide a safe abstraction over the `LibSWIFFT` library, users should be aware that...
 
 
-pub mod bindgen_ffi;
-pub mod buffer;
-pub mod hash;
-pub mod arithmetic;
-pub mod reference;
+#![allow(non_upper_case_globals)]
+#![allow(non_camel_case_types)]
+#![allow(non_snake_case)]
+include!("./bindings.rs");
