@@ -4,7 +4,7 @@ use std::ops::{Add, AddAssign, Index, Mul, Neg, Sub, SubAssign};
 use crate::reference::constant::{INPUT_BLOCK_SIZE, M, N, P};
 
 /// Element of polynomial ring ***Z_[`P`] (A)/(A+1)***
-#[derive(Eq, Debug)]
+#[derive(Eq, Copy, Debug)]
 pub struct Polynomial {
     coefficients: [u16; N]
 }
