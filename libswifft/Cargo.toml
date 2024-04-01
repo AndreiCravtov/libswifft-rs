@@ -7,4 +7,3 @@ edition = "2021"
 
 [dependencies]
 libswifft_sys = { path = "../libswifft-sys", version = "0.1.0" }
-rand = "0.9.0-alpha.1"

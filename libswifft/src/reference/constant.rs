@@ -26,48 +26,7 @@ pub const INPUT_SIZE: usize = N * M;
 /// is represented by `1` bit; `8` elements per [`u8`]
 pub const INPUT_BLOCK_SIZE: usize = INPUT_SIZE / u8::BITS as usize;
 
-/// Generator point for subgroup of Z_[`P`] of order [`OMEGA_ORDER`],
-/// who's elements are all the [`OMEGA_ORDER`]th roots of unity in Z_[`P`]
-///
-/// The [`N`] odd [`OMEGA_POWERS`], i.e. [`OMEGA`], [`OMEGA`]^3, ..., [`OMEGA`]^{[`OMEGA_ORDER`]-1},
-/// are exactly the ***primitive*** [`OMEGA_ORDER`]th roots of unity
-pub const OMEGA: u16 = 42;
-
-/// [`OMEGA`]^[`OMEGA_ORDER`] = 1 (mod [`P`])
-pub const OMEGA_ORDER: usize = 2*N;
-
-/// The powers of [`OMEGA`] mod [`P`]: 1, [`OMEGA`], [`OMEGA`]^2, ..., [`OMEGA`]^{[`OMEGA_ORDER`]-1}
-pub const OMEGA_POWERS: [u16; OMEGA_ORDER] = omega_powers(); const fn omega_powers() -> [u16; OMEGA_ORDER] {
-    let mut omega_powers= [0; OMEGA_ORDER];
-    omega_powers[0] = 1;
-    let mut i = 1; while i < omega_powers.len() {
-        omega_powers[i] = (omega_powers[i-1] * OMEGA).rem_euclid(P);
-        i += 1
-    }
-    omega_powers
-}
-
-/// The values attained by evaluating each of the [`M`] multiplier polynomials
-/// at the points [`OMEGA`], [`OMEGA`]^3, ..., [`OMEGA`]^{[`OMEGA_ORDER`]-1}
-pub const MULTIPLIER_VALUES: [[u16; N]; M] = multiplier_values(); const fn multiplier_values() -> [[u16; N]; M] {
-    let mut multiplier_values: [[u16; N]; M] = [[0; N]; M];
-    let mut i = 0; while i < M {
-        let multiplier_polynomial = MULTIPLIER_POLYNOMIAL_COEFFICIENTS[i];
-        let mut values: [u16; N] = multiplier_values[i];
-        let mut j = 0; while j < N {
-            let omega_power = OMEGA_POWERS[2*j + 1];
-            let mut k = 0; while k < N {
-                let polynomial_coefficient = multiplier_polynomial[k];
-                values[j] = (values[j] + polynomial_coefficient*omega_power).rem_euclid(P);
-                k += 1
-            }
-            j += 1
-        }
-        i += 1
-    }
-    multiplier_values
-}
-
+/// The instantiation of [`MULTIPLIER_POLYNOMIAL_COEFFICIENTS`] as [`Polynomial`]s
 pub const MULTIPLIER_POLYNOMIALS: [Polynomial; M] = multiplier_polynomials(); const fn multiplier_polynomials() -> [Polynomial; M] {
     let mut multiplier_polynomials = [Polynomial::ZERO; M];
     let mut i = 0; while i < M {
@@ -79,6 +38,8 @@ pub const MULTIPLIER_POLYNOMIALS: [Polynomial; M] = multiplier_polynomials(); co
 
 /// A list of [`M`] fixed multiplier polynomials, in their coefficient representation,
 /// which uniquely specify which function in the SWIFFT family this is.
+///
+/// Derived from the digits of PI
 pub const MULTIPLIER_POLYNOMIAL_COEFFICIENTS: [[u16; N]; M] = [[
     141,  78, 139,  75, 238, 205, 129, 126,  22, 245, 197, 169, 142, 118, 105,  78,
     50, 149,  29, 208, 114,  34,  85, 117,  67, 148,  86, 256,  25,  49, 133,  93,
