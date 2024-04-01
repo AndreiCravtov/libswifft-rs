@@ -1,6 +1,6 @@
 use std::fmt::{Display, Formatter};
 use std::iter::Sum;
-use std::ops::{Add, AddAssign, Index, IndexMut, Mul, Neg, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Index, Mul, Neg, Sub, SubAssign};
 use crate::reference::constant::{INPUT_BLOCK_SIZE, M, N, P};
 
 /// Element of polynomial ring ***Z_[`P`] (A)/(A+1)***
@@ -123,12 +123,6 @@ impl Index<usize> for Polynomial {
     type Output = u16;
     fn index(&self, index: usize) -> &Self::Output {
         &self.coefficients[index]
-    }
-}
-
-impl IndexMut<usize> for Polynomial {
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        &mut self[index]
     }
 }
 
