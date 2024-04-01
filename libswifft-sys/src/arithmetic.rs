@@ -1,3 +1,5 @@
+//! Parameters: n=64, m=32, q=257
+
 use super::{
     bindgen_ffi::{
         SWIFFT_Set, SWIFFT_SetMultiple,
