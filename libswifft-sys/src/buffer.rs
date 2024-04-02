@@ -1,5 +1,7 @@
 //! Parameters: n=64, m=32, q=257
 
+use crate::constant::{INPUT_BLOCK_SIZE, OUTPUT_BLOCK_SIZE, COMPACT_OUTPUT_BLOCK_SIZE};
+
 #[repr(C, align(64))]
 pub struct AlignedBuffer<const CHUNK_SIZE: usize, const NUM_CHUNKS: usize>(pub [[u8; CHUNK_SIZE]; NUM_CHUNKS]);
 
@@ -9,7 +11,7 @@ pub struct AlignedBuffer<const CHUNK_SIZE: usize, const NUM_CHUNKS: usize>(pub [
 pub type Input = Inputs<1>;
 
 /// An array of inputs
-pub type Inputs<const NUM_INPUTS: usize> = AlignedBuffer<256, NUM_INPUTS>;
+pub type Inputs<const NUM_INPUTS: usize> = AlignedBuffer<INPUT_BLOCK_SIZE, NUM_INPUTS>;
 
 /// An input buffer treated as a sign buffer,
 /// where each bit corresponds to a sign.
@@ -25,18 +27,18 @@ pub type SignInputs<const NUM_INPUTS: usize> = Inputs<NUM_INPUTS>;
 /// where each element in the vector takes `16` bits
 pub type Output = Outputs<1>;
 
-// An array of output vectors
-pub type Outputs<const NUM_OUTPUTS: usize> = AlignedBuffer<128, NUM_OUTPUTS>;
+/// An array of output vectors
+pub type Outputs<const NUM_OUTPUTS: usize> = AlignedBuffer<OUTPUT_BLOCK_SIZE, NUM_OUTPUTS>;
 
 /// An output vector in `Z_{256}^{64}`,
 /// corresponding to `512`-bit output size,
 /// where each element in the vector takes `64` bits
 pub type CompactOutput = CompactOutputs<1>;
 
-// An array of compact outputs
-pub type CompactOutputs<const NUM_OUTPUTS: usize> = AlignedBuffer<64, NUM_OUTPUTS>;
+/// An array of compact outputs
+pub type CompactOutputs<const NUM_OUTPUTS: usize> = AlignedBuffer<COMPACT_OUTPUT_BLOCK_SIZE, NUM_OUTPUTS>;
 
-// IMPLEMENT BLOCKS
+// IMPLEMENTATION BLOCKS
 impl<const CHUNK_SIZE: usize, const NUM_CHUNKS: usize> AlignedBuffer<CHUNK_SIZE, NUM_CHUNKS> {
     /// Creates a `value`-initialized `AlignedBuffer`
     pub fn new(value: u8) -> Self {
