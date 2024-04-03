@@ -1,46 +1,11 @@
 use crate::polynomial::Polynomial;
-
-/// Efficiency and security parameter representing the number of
-/// dimensions of vector space ***Z_{[`P`]}^{[`N`]}***
-pub const N: usize = 64;
-
-/// Efficiency and security parameter representing the number of vectors
-/// (*from vector space ***Z_{[`P`]}^{[`N`]}****),
-/// that are taken as input to the hash function
-pub const M: usize = 16;
-
-/// Efficiency and security parameter that determines the
-/// finite field ***Z_{[`P`]}***
-/// *(integers ***Z*** modulo [`P`])*
-pub const P: u16 = 257;
-
-/// The total size of the input, calculated by multiplying
-/// [`N`] _(the number of elements in an input vector)_ and
-/// [`M`] _(the number of input vectors)_
-pub const INPUT_SIZE: usize = N * M;
-
-/// The total size of an input block that consists of [`u8`] elements,
-/// calculated by dividing [`INPUT_SIZE`] by [`u8::BITS`].
-///
-/// Each of the [`N`] elements *(in each of the [`M`] input vectors)*,
-/// is represented by `1` bit; `8` elements per [`u8`]
-pub const INPUT_BLOCK_SIZE: usize = INPUT_SIZE / u8::BITS as usize;
-
-/// The instantiation of [`MULTIPLIER_POLYNOMIAL_COEFFICIENTS`] as [`Polynomial`]s
-pub const MULTIPLIER_POLYNOMIALS: [Polynomial; M] = multiplier_polynomials(); const fn multiplier_polynomials() -> [Polynomial; M] {
-    let mut multiplier_polynomials = [Polynomial::ZERO; M];
-    let mut i = 0; while i < M {
-        multiplier_polynomials[i] = Polynomial::new(&MULTIPLIER_POLYNOMIAL_COEFFICIENTS[i]);
-        i += 1
-    }
-    multiplier_polynomials
-}
+use crate::hash::M;
 
 /// A list of [`M`] fixed multiplier polynomials, in their coefficient representation,
-/// which uniquely specify which function in the SWIFFT family this is.
+/// which uniquely specify which function in the `SWIFFT` family this is.
 ///
 /// Derived from the digits of PI
-pub const MULTIPLIER_POLYNOMIAL_COEFFICIENTS: [[u16; N]; M] = [[
+pub const MULTIPLIER_POLYNOMIAL_COEFFICIENTS: [[u16; Polynomial::N]; M] = [[
     141,  78, 139,  75, 238, 205, 129, 126,  22, 245, 197, 169, 142, 118, 105,  78,
     50, 149,  29, 208, 114,  34,  85, 117,  67, 148,  86, 256,  25,  49, 133,  93,
     95,  36,  68, 231, 211, 102, 151, 128, 224, 117, 193,  27, 102, 187,   7, 105,

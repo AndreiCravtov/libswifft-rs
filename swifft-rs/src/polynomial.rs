@@ -1,287 +1,433 @@
-use std::fmt::{Display, Formatter};
 use std::iter::Sum;
-use std::ops::{Add, AddAssign, Index, Mul, Neg, Sub, SubAssign};
-use num_traits::Inv;
-use crate::constant::{INPUT_BLOCK_SIZE, M, N, P};
+use std::ops::{Add, AddAssign, Index, Mul, MulAssign, Neg, Sub, SubAssign};
+use rayon::prelude::*;
+
+
 use crate::z257::Z257;
 
-/// Element of polynomial ring ***[`Z257`] (A)/(A+1)***
-#[derive(Eq, Copy, Debug)]
-pub struct Polynomial {
-    coefficients: [u16; N]
+/// Element of polynomial quotient ring $\mathbb{Z}_{257}[\alpha]/(\alpha^{64} + 1)$
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+#[repr(transparent)]
+pub struct Polynomial(Coefficients);
+
+/// Type alias representing the coefficients of a polynomial
+pub type Coefficients = [Z257; Polynomial::N];
+
+/// Type alias representing a $64 \times 64$ matrix,
+/// where each polynomial is interpreted a column
+pub type Matrix = [Polynomial; Polynomial::N];
+
+// STRUCT METHODS
+impl Polynomial {
+    // CONSTRUCTOR METHODS
+    /// Create a polynomial from the coefficients provided
+    pub const fn new(coefficients: Coefficients) -> Self {
+        Self(coefficients)
+    }
+    
+    /// Creates new polynomial from the coefficients provided
+    pub const fn from_coefficients(coefficients: &[u16; Self::N]) -> Self {
+        let mut values: Coefficients = [Z257::ZERO; Self::N];
+        let mut i = 0; while i < Self::N {
+            values[i] = Z257::new(coefficients[i]);
+            i += 1
+        }
+        Self(values)
+    }
+
+    /// Create a polynomial from the powers of the given `point`,
+    /// where $1, point, point^2, \dots, point^{63}$ are the coefficients
+    pub const fn from_point_powers(point: &Z257) -> Self {
+        let mut point_powers: Coefficients = [Z257::ZERO; Self::N];
+        point_powers[0] = Z257::ONE;
+        let mut i = 1; while i < Self::N {
+            point_powers[i] = point_powers[i-1].cn_mul(point);
+            i += 1
+        }
+        Self(point_powers)
+    }
+
+    // STRUCT FIELD METHODS
+    /// Coefficients of the polynomial
+    #[inline]
+    pub const fn coefficients(&self) -> &Coefficients { &self.0 }
+
+    // CONSTANT OPERATIONS
+    pub const fn cn_neg(&self) -> Self {
+        let mut result = Polynomial::ZERO;
+        let mut i = 0; while i < Self::N {
+            result.0[i] = self.0[i].cn_neg();
+            i += 1
+        }
+        result
+    }
+    
+    pub const fn cn_add(&self, rhs: &Self) -> Self {
+        let mut result = Polynomial::ZERO;
+        let mut i = 0; while i < Self::N {
+            result.0[i] = self.0[i].cn_add(&rhs.0[i]);
+            i += 1
+        }
+        result
+    }
+    
+    pub const fn cn_sub(&self, rhs: &Self) -> Self {
+        let mut result = Polynomial::ZERO;
+        let mut i = 0; while i < Self::N {
+            result.0[i] = self.0[i].cn_sub(&rhs.0[i]);
+            i += 1
+        }
+        result
+    }
+    
+    pub const fn scalar_mul(&self, scalar: &Z257) -> Self {
+        let mut result = Polynomial::ZERO;
+        let mut i = 0; while i < Self::N {
+            result.0[i] = self.0[i].cn_mul(scalar);
+            i += 1
+        }
+        result
+    }
+
+    /// Computes the dot-product product of `self` and `rhs` coefficients
+    pub const fn dot_product(&self, rhs: &Self) -> Z257 {
+        let mut dot_product = Z257::ZERO;
+        let mut i = 0; while i < Self::N {
+            dot_product = dot_product.cn_add(&self.0[i].cn_mul(&rhs.0[i]));
+            i += 1
+        }
+        dot_product
+    }
+
+    /// Computes the Hadamard (point-wise) product of `self` and `rhs` coefficients
+    pub const fn hadamard_product(&self, rhs: &Self) -> Self {
+        let mut hadamard_product = Polynomial::ZERO;
+        let mut i = 0; while i < Self::N {
+            hadamard_product.0[i] = self.0[i].cn_mul(&rhs.0[i]);
+            i += 1
+        }
+        hadamard_product
+    }
+
+    /// Increments the power of every $\alpha$ in this polynomial by $1$,
+    /// and reduces it modulo $\alpha^{64} + 1$, returning the result
+    ///
+    /// This is equivalent to multiplying the polynomial by $\alpha$, or performing
+    /// a negacyclic rotation on the coefficient vector
+    pub const fn increment_power(&self) -> Self {
+        let mut reduced_product = Polynomial::ZERO;
+        reduced_product.0[0] = self.0[Self::N - 1].cn_neg();
+        let mut i = 1; while i < Self::N {
+            reduced_product.0[i] = self.0[i-1];
+            i += 1
+        }
+        reduced_product
+    }
+
+    /// Evaluates this polynomial at some point
+    ///
+    /// This is equivalent to computing the dot product of the polynomial coefficient vector
+    /// and [Polynomial::from_point_powers] vector - computed from the provided point
+    #[inline]
+    pub const fn evaluate_point(&self, point: &Z257) -> Z257 {
+        self.dot_product(&Self::from_point_powers(point))
+    }
+
+    /// Produces the Toeplitz matrix that corresponds to the multiplication by this polynomial,
+    /// where each polynomial in the resulting array is a column
+    ///
+    /// For the case of quotient ring $\mathbb{Z}_{257}[\alpha]/(\alpha^{64} + 1)$,
+    /// this matrix represents a negacyclic convolution
+    pub const fn toeplitz_matrix(&self) -> Matrix {
+        let mut toeplitz_matrix = [Self::ZERO; Self::N];
+        toeplitz_matrix[0] = *self;
+        let mut i = 0; while i < Self::N {
+            toeplitz_matrix[i] = toeplitz_matrix[i-1].increment_power();
+            i += 1
+        }
+        toeplitz_matrix
+    }
+
+    /// Performs standard matrix multiplication in the field $Z_{257}$
+    ///
+    /// Treats the polynomials in `lhs` as columns of the matrix;
+    /// treats the coefficients of `rhs` as a column vector;
+    /// the result should be interpreted as a column vector
+    pub const fn matrix_mul_col_vec(lhs: &Matrix, rhs: &Self) -> Self {
+        let mut product: Coefficients = [Z257::ZERO; Self::N];
+        let mut row = 0; while row < Self::N {
+            let mut column = 0; while column < Self::N {
+                product[row] = product[row].cn_add(
+                    &lhs[column].0[row].cn_mul(&rhs.0[column]));
+                column += 1
+            }
+            row += 1
+        }
+        Self(product)
+    }
+
+    /// Performs standard matrix multiplication in the field $Z_{257}$
+    ///
+    /// Treats the coefficients of `lhs` as a row vector;
+    /// treats the polynomials in `rhs` as columns of the matrix;
+    /// the result should be interpreted as a row vector
+    pub const fn matrix_mul_row_vec(&self, rhs: &Matrix) -> Self {
+        let mut product: Coefficients = [Z257::ZERO; Self::N];
+        let mut column = 0; while column < Self::N {
+            product[column] = self.dot_product(&rhs[column]);
+            column += 1
+        }
+        Self(product)
+    }
+
+    /// Performs the naive algorithm for multiplying polynomials
+    #[inline]
+    pub const fn naive_mul(&self, rhs: &Self) -> Self {
+        Self::matrix_mul_col_vec(&self.toeplitz_matrix(), rhs)
+    }
+
+    // NON-CONSTANT OPERATIONS
+    pub fn neg_assign(&mut self) {
+        for i in 0..Self::N {
+            self.0[i] = -self.0[i]
+        }
+    }
+
+    pub fn scalar_mul_assign(&mut self, scalar: &Z257) {
+        self.0.par_iter_mut()
+            .for_each(|c| c.mul_assign(scalar));
+    }
+
+    /// Computes the Hadamard (point-wise) product of `self` and `rhs` coefficients
+    pub fn hadamard_product_assign(&mut self, rhs: &Self) {
+        self.0.par_iter_mut().enumerate()
+            .for_each(|(i, c)| c.mul_assign(rhs[i]));
+    }
+
+    /// Increments the power of every $\alpha$ in this polynomial by $1$,
+    /// and reduces it modulo $\alpha^{64} + 1$, returning the result
+    ///
+    /// This is equivalent to multiplying the polynomial by $\alpha$, or performing
+    /// a negacyclic rotation on the coefficient vector
+    pub fn increment_power_assign(&mut self) {
+        let rotated_coefficient = -self[Self::N - 1];
+        for i in 1..Self::N {
+            self.0[i] = self[i-1]
+        }
+        self.0[0] = rotated_coefficient
+    }
+    
+    
+    /// Evaluates the polynomial at [`Polynomial::N`] ascending odd powers of [`Z257::OMEGA_ORDER_128`],
+    /// which is $\omega_{128}, \omega_{128}^3, \dots, \omega_{128}^{127}$,
+    /// and returns the resulting coefficient
+    ///
+    /// Equivalent to performing the isomorphism
+    /// $$\left(\mathbb{Z}\_{257}\[\alpha\]/(\alpha^{64}+1), +, * \right) \cong \left(\mathbb{Z}_{257}^{64}, +, \circ \right)$$
+    #[inline]
+    pub fn fourier_coefficients(&self) -> Self {
+        let mut fourier_coefficients = self.clone();
+        fourier_coefficients.fourier_coefficients_assign();
+        fourier_coefficients
+    }
+
+    /// Evaluates the polynomial at [`Polynomial::N`] ascending odd powers of [`Z257::OMEGA_ORDER_128`],
+    /// which is $\omega_{128}, \omega_{128}^3, \dots, \omega_{128}^{127}$,
+    /// and returns the resulting coefficient
+    ///
+    /// Equivalent to performing the isomorphism
+    /// $$\left(\mathbb{Z}\_{257}\[\alpha\]/(\alpha^{64}+1), +, * \right) \cong \left(\mathbb{Z}_{257}^{64}, +, \circ \right)$$
+    pub fn fourier_coefficients_assign(&mut self) {
+        // multiply point-wise by [`OMEGA_ORDER_128_POWERS`]
+        // and compute [`N`]-dimensional FFT of the result
+        self.hadamard_product_assign(&Self::OMEGA_ORDER_128_POWERS);
+        halo2_proofs::arithmetic::best_fft::<Z257, Z257>(
+            &mut self.0, Z257::OMEGA_ORDER_64, Self::LOG2_N);
+    }
+
+    /// Interpolates the Fourier coefficients back into a polynomial
+    ///
+    /// Equivalent to undoing the isomorphism
+    /// $$\left(\mathbb{Z}\_{257}\[\alpha\]/(\alpha^{64}+1), +, * \right) \cong \left(\mathbb{Z}_{257}^{64}, +, \circ \right)$$
+    #[inline]
+    pub fn interpolate_fourier_coefficients(&self) -> Self {
+        let mut interpolated_polynomial = self.clone();
+        interpolated_polynomial.interpolate_fourier_coefficients_assign();
+        interpolated_polynomial
+    }
+
+    /// Interpolates the Fourier coefficients back into a polynomial
+    ///
+    /// Equivalent to undoing the isomorphism 
+    /// $$\left(\mathbb{Z}\_{257}\[\alpha\]/(\alpha^{64}+1), +, * \right) \cong \left(\mathbb{Z}_{257}^{64}, +, \circ \right)$$
+    pub fn interpolate_fourier_coefficients_assign(&mut self) {
+        // multiply point-wise by [`OMEGA_ORDER_128_INV_POWERS`]
+        // and compute [`N`]-dimensional inverse FFT of the result
+        self.hadamard_product_assign(&Self::OMEGA_ORDER_128_INV_POWERS);
+        halo2_proofs::arithmetic::best_fft::<Z257, Z257>(
+            &mut self.0, Self::OMEGA_ORDER_64_INV, Self::LOG2_N);
+
+        // scale the result by [`N_INV`]
+        self.scalar_mul_assign(&Self::N_INV);
+    }
+
+    /// Performs the FFT algorithm for multiplying polynomials
+    #[inline]
+    pub fn fft_multiply(&self, rhs: &Self) -> Self {
+        let mut product = self.clone();
+        product.fft_multiply_assign(rhs);
+        product
+    }
+
+    /// Performs the FFT algorithm for multiplying polynomials
+    pub fn fft_multiply_assign(&mut self, rhs: &Self) {
+        // compute fourier coefficients of both
+        self.fourier_coefficients_assign();
+        let rhs_coefficients = rhs.fourier_coefficients();
+
+        // compute point-wise product
+        self.hadamard_product_assign(&rhs_coefficients);
+
+        // interpolate the result back into a polynomial
+        self.interpolate_fourier_coefficients_assign();
+    }
 }
 
 impl Polynomial {
+    /// The security parameter determining the maximum degree of polynomials,
+    /// which is [`Polynomial::N`]`-1`
+    pub const N: usize = 64;
+    pub const LOG2_N: u32 = Self::N.ilog2();
+    pub const N_INV: Z257 = Z257::new(Self::N as u16).cn_inv();
+
+
     /// The zero polynomial, with all coefficients being ***0***
     /// It is the additive identity element, i.e. P + ZERO = P
-    pub const ZERO: Polynomial = Polynomial { coefficients: [0; N] };
+    pub const ZERO: Self = Self([Z257::ZERO; Self::N]);
 
     /// The one polynomial, with the first coefficient being ***1***, and the rest ***0***
     /// It is the multiplicative identity element, i.e. P * ONE = P
-    pub const ONE: Polynomial = Polynomial { coefficients: [
+    pub const ONE: Self = Self::from_coefficients(&[
         1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    ] };
+    ]);
 
-    pub const fn new(coefficients: &[u16; N]) -> Self {
-        let mut coefficients_mod: [u16; N] = [0; N];
-        let mut i = 0; while i < N {
-            coefficients_mod[i] = coefficients[i].rem_euclid(P);
-            i += 1
-        }
-        Polynomial { coefficients: coefficients_mod }
-    }
+    /// The inverse element of [`Z257::OMEGA_ORDER_64`]
+    pub const OMEGA_ORDER_64_INV: Z257 = Z257::OMEGA_ORDER_64.cn_inv();
 
-    /// Parses input block of [`M`] binary polynomials
-    pub fn from_input_block(input: &[u8; INPUT_BLOCK_SIZE]) -> [Polynomial; M] {
-        // parse inputs into polynomials
-        let mut input_coefficients: [[u16; N]; M] = [[0; N]; M];
-        for byte_index in 0..INPUT_BLOCK_SIZE {
-            for bit_position in 0..u8::BITS {
-                let input_position = (byte_index as u32 * u8::BITS + bit_position) as usize;
-                let input_index = input_position / N;
-                let coefficient_index = input_position % N;
-                input_coefficients[input_index][coefficient_index] = ((input[byte_index] >> bit_position) & 1) as u16;
-            }
-        }
-        input_coefficients.map(|coefficients| { Polynomial::new(&coefficients) })
-    }
+    /// The polynomial whose coefficients are ascending powers of [`Z257::OMEGA_ORDER_128`],
+    /// which is $0, \omega_{128}, \omega_{128}^2, \dots, \omega_{128}^{63}$
+    pub const OMEGA_ORDER_128_POWERS: Self = Self::from_point_powers(&Z257::OMEGA_ORDER_128);
 
-    /// For any coefficient ***c***, returns ***-c (mod [`P`])***
-    pub fn neg_coefficient(coefficient: &u16) -> u16 {
-        (-(*coefficient as i32)).rem_euclid(P as i32) as u16
-    }
-
-    pub fn coefficients(&self) -> &[u16; N] {
-        &self.coefficients
-    }
-    
-    /// Computes the Hadamard (point-wise) product of the coefficient vector
-    pub fn hadamard_product(&self, rhs: &Self) -> Self {
-        let mut hadamard_product = [0; N];
-        for i in 1..N {
-            hadamard_product[i] = (self[i] * rhs[i]) % Z257::P as u16
-        }
-        Self { coefficients: hadamard_product }
-    }
-
-    /// Increments the power of every ***a*** in this polynomial by 1,
-    /// and reduces it modulo ***a^[`N`] + 1***, returning the result
-    ///
-    /// This is equivalent to multiplying the polynomial by ***a***
-    pub fn increment_power(&self) -> Polynomial {
-        // equivalent to rotating the coefficients, but the rotated value on the other end is negative
-        let mut reduced_product = [0; N];
-        reduced_product[0] = Polynomial::neg_coefficient(&self[N-1]);
-        for i in 1..N {
-            reduced_product[i] = self[i-1]
-        }
-        Polynomial { coefficients: reduced_product }
-    }
-
-    /// Evaluates this polynomial at some point, modulo [`P`]
-    pub fn evaluate_point(&self, point: u16) -> u16 {
-        // exponentiate point correctly
-        let mut point_powers: [u16; N] = [0; N];
-        point_powers[0] = 1;
-        for i in 1..N {
-            point_powers[i] = (point_powers[i-1] as u32 * point as u32).rem_euclid(P as u32) as u16;
-        }
-
-        // compute dot product between point powers and coefficients
-        let mut evaluation = 0;
-        for i in 0..N {
-            evaluation = (evaluation + point_powers[i] * self[i]).rem_euclid(P);
-        }
-        evaluation
-    }
-
-    /// Produces a toeplitz matrix which corresponds to the multiplication by this polynomial,
-    /// where each resulting of the array is a column
-    ///
-    /// In this particular case, the matrix represents a negacyclic convolution
-    pub fn toeplitz_matrix(&self) -> [Polynomial; N] {
-        let mut toeplitz_matrix = [Polynomial::ZERO; N];
-        toeplitz_matrix[0] = self.clone();
-        for i in 1..N {
-            toeplitz_matrix[i] = toeplitz_matrix[i-1].increment_power()
-        }
-        toeplitz_matrix
-    }
-    
-    pub fn correct_multiply(&self, rhs: &Self) -> Self { // this performs the transformation correctly
-        &self.toeplitz_matrix() * rhs
-    }
-    
-    pub fn fft_multiply(&self, rhs: &Polynomial) -> Polynomial {
-        // powers of OMEGA_ORDER_128 (should be precomputed)
-        let mut omega_powers: [u16; N] = [0; N];
-        omega_powers[0] = 1;
-        for i in 1..N {
-            omega_powers[i] = (omega_powers[i-1] * Z257::OMEGA_ORDER_128) % Z257::P as u16;
-        }
-        let omega_polynomial = Self { coefficients: omega_powers };
-        
-        // preprocess `self` and `rhs`
-        let mut self_processed = self.hadamard_product(&omega_polynomial).coefficients.map(|value| {Z257::new(value)});
-        let mut rhs_processed = rhs.hadamard_product(&omega_polynomial).coefficients.map(|value| {Z257::new(value)});
-        
-        // compute `N`-dimensional FFT of processed vectors
-        halo2_proofs::arithmetic::best_fft::<Z257, Z257>(&mut self_processed, Z257::OMEGA_ORDER_64.into(), N.ilog2());
-        halo2_proofs::arithmetic::best_fft::<Z257, Z257>(&mut rhs_processed, Z257::OMEGA_ORDER_64.into(), N.ilog2());
-        
-        // compute point-wise product (modulo 257)
-        let mut product_fft = self_processed;
-        for i in 0..N {
-            product_fft[i] *= rhs_processed[i];
-        }
-        
-        // compute `N`-dimensional IFFT of result
-        for i in 0..N {
-            product_fft[i] /= Z257::new(omega_powers[i]);
-        }
-        halo2_proofs::arithmetic::best_fft::<Z257, Z257>(&mut product_fft, Z257::new(Z257::OMEGA_ORDER_64).inv().unwrap(), N.ilog2());
-        for mut value in product_fft {
-            value /= Z257::new(N as u16);
-        }
-        
-        // turn back into polynomial
-        Self { coefficients: product_fft.map(|value| { value.into() }) }
-    }
+    /// The polynomial whose coefficients are ascending powers of the ***inverse*** of [`Z257::OMEGA_ORDER_128`],
+    /// which is $0, \omega_{128}^{-1}, \omega_{128}^{-2}, \dots, \omega_{128}^{-63}$
+    pub const OMEGA_ORDER_128_INV_POWERS: Self = Self::from_point_powers(&Z257::OMEGA_ORDER_128.cn_inv());
 }
 
-impl Clone for Polynomial {
-    fn clone(&self) -> Self {
-        Polynomial{ coefficients: self.coefficients.clone() }
-    }
-
-    fn clone_from(&mut self, source: &Self) {
-        self.coefficients = source.coefficients.clone()
-    }
-}
-
-impl Display for Polynomial {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "{}", self.coefficients.iter().enumerate()
-            .map(|(i, &c)| format!("{c}*a^{i}"))
-            .collect::<Vec<_>>().join(" + "))
+impl<'a> Into<Polynomial> for &'a Polynomial {
+    #[inline]
+    fn into(self) -> Polynomial {
+        *self
     }
 }
 
 impl Index<usize> for Polynomial {
-    type Output = u16;
+    type Output = Z257;
     fn index(&self, index: usize) -> &Self::Output {
-        &self.coefficients[index]
+        &self.0[index]
     }
 }
 
-impl PartialEq<Self> for Polynomial {
-    fn eq(&self, other: &Self) -> bool {
-        for i in 0..N {
-            if self[i] != other[i] {
-                return false
-            }
-        }
-        return true
-    }
-}
-
-impl Sum for Polynomial {
-    fn sum<I: Iterator<Item=Self>>(iter: I) -> Self {
-        iter.sum()
-    }
-}
-
-impl Add for &Polynomial {
-    type Output = Polynomial;
-    fn add(self, rhs: Self) -> Self::Output {
-        let mut sum = [0; N];
-        for i in 0..N {
-            sum[i] = (self[i] + rhs[i]).rem_euclid(P)
-        }
-        Polynomial { coefficients: sum }
-    }
-}
-
-impl AddAssign for Polynomial {
-    fn add_assign(&mut self, rhs: Self) {
-        let mut coefficients = self.coefficients;
-        for i in 0..N {
-            coefficients[i] += rhs[i]
-        }
-    }
-}
-
-impl Neg for &Polynomial {
-    type Output = Polynomial;
+impl Neg for Polynomial {
+    type Output = Self;
     fn neg(self) -> Self::Output {
-        let mut negative = [0; N];
-        for i in 0..N {
-            let negative_coefficient = (-(self[i] as i32)).rem_euclid(P as i32) as u16;
-            negative[i] = negative_coefficient;
-        }
-        Polynomial { coefficients: negative }
+        self.cn_neg()
     }
 }
 
-impl Sub for &Polynomial {
+impl<T: Into<Self>> Add<T> for Polynomial {
     type Output = Polynomial;
-    fn sub(self, rhs: Self) -> Self::Output {
-        let negative = -rhs;
-        self + &negative
+    fn add(self, rhs: T) -> Self::Output {
+        self.cn_add(&rhs.into())
     }
 }
 
-impl SubAssign for Polynomial {
-    fn sub_assign(&mut self, rhs: Self) {
-        let mut coefficients = self.coefficients;
-        for i in 0..N {
-            coefficients[i] -= rhs[i]
+impl<T: Into<Self>> AddAssign<T> for Polynomial {
+    fn add_assign(&mut self, rhs: T) {
+        let rhs = rhs.into();
+        self.0.par_iter_mut().enumerate().for_each(|(i, c)| {
+            c.add_assign(rhs[i])
+        })
+    }
+}
+
+impl<T: Into<Self>> Sum<T> for Polynomial {
+    fn sum<I: Iterator<Item=T>>(iter: I) -> Self {
+        iter.fold(Self::ZERO, |acc, next| { acc + next.into() })
+    }
+}
+
+impl<T: Into<Self>> Sub<T> for Polynomial {
+    type Output = Self;
+    fn sub(self, rhs: T) -> Self::Output {
+        self.cn_sub(&rhs.into())
+    }
+}
+
+impl<T: Into<Self>> SubAssign<T> for Polynomial {
+    fn sub_assign(&mut self, rhs: T) {
+        let rhs = rhs.into();
+        for i in 0..Self::N {
+            self.0[i] -= rhs.0[i]
         }
     }
 }
 
-impl Mul<&u16> for &Polynomial {
+impl<T: Into<Z257>> Mul<T> for Polynomial {
     type Output = Polynomial;
-    fn mul(self, rhs: &u16) -> Self::Output {
-        let multiplier = rhs.rem_euclid(P);
-        let mut result = [0; N];
-        for i in 0..N {
-            result[i] = (self[i] as u32 * multiplier as u32).rem_euclid(P as u32) as u16
-        }
-        Polynomial { coefficients: result }
+    fn mul(self, rhs: T) -> Self::Output {
+        self.scalar_mul(&rhs.into())
     }
 }
 
-impl Mul<&Polynomial> for u16 {
+impl MulAssign<Z257> for Polynomial {
+    fn mul_assign(&mut self, rhs: Z257) {
+        self.scalar_mul_assign(&rhs)
+    }
+}
+
+impl Mul<Polynomial> for Z257 {
+    type Output = Polynomial;
+    fn mul(self, rhs: Polynomial) -> Self::Output {
+        rhs.scalar_mul(&self)
+    }
+}
+
+impl Mul<&Matrix> for Polynomial {
+    type Output = Polynomial;
+    fn mul(self, rhs: &Matrix) -> Self::Output {
+        self.matrix_mul_row_vec(rhs)
+    }
+}
+
+impl Mul<&Polynomial> for &Matrix {
     type Output = Polynomial;
     fn mul(self, rhs: &Polynomial) -> Self::Output {
-        rhs * &self
+        Polynomial::matrix_mul_col_vec(self, rhs)
     }
 }
 
-/// Treats the array of polynomials as a matrix, where
-/// each element is the corresponding column; treats the polynomial
-/// to be multiplied as a vector, and performs standard matrix multiplication
-/// in the field ***Z_[`P`]***
-impl Mul<&Polynomial> for &[Polynomial; N] {
+impl<T: Into<Self>> Mul<T> for &Polynomial {
     type Output = Polynomial;
-    fn mul(self, rhs: &Polynomial) -> Self::Output {
-        let mut product: [u16; N] = [0; N];
-        for row in 0..N {
-            for column in 0..N {
-                product[row] = (product[row] as u32 + self[column][row] as u32 * rhs[column] as u32).rem_euclid(P as u32) as u16;
-            }
-        }
-        Polynomial { coefficients: product }
+    fn mul(self, rhs: T) -> Self::Output {
+        self.fft_multiply(rhs.into())
     }
 }
 
-impl Mul for &Polynomial {
-    type Output = Polynomial;
-    fn mul(self, rhs: Self) -> Self::Output { // THIS IS INCORRECT, the correct multiply is 
-        self.fft_multiply(rhs)
+impl<T: Into<Self>> MulAssign<T> for Polynomial {
+    fn mul_assign(&mut self, rhs: T) {
+        self.fft_multiply_assign(&rhs.into())
     }
 }
