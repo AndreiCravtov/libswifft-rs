@@ -1,9 +1,9 @@
 [package]
 name = "libswifft_sys"
 links = "LibSWIFFT"
-description = "To be done"
+description = "LibSWIFFT is a production-ready C/C++ library providing SWIFFT, one of the fastest available secure hash functions, which is also collision-resistant as well as facilitates zero-knowledge proofs of knowledge of a preimage (ZKPoKP) and post-quantum digital signatures."
 license = "MIT OR Apache-2.0"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 build = "build.rs"
 

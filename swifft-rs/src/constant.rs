@@ -1,4 +1,4 @@
-use crate::reference::polynomial::Polynomial;
+use crate::polynomial::Polynomial;
 
 /// Efficiency and security parameter representing the number of
 /// dimensions of vector space ***Z_{[`P`]}^{[`N`]}***

@@ -1,18 +1,12 @@
 //! Parameters: n=64, m=32, q=257
 
-use super::{
-    bindgen_ffi::{
-        SWIFFT_Set, SWIFFT_SetMultiple,
-        SWIFFT_Add, SWIFFT_AddMultiple,
-        SWIFFT_Sub, SWIFFT_SubMultiple,
-        SWIFFT_Mul, SWIFFT_MulMultiple,
-        SWIFFT_ConstSet, SWIFFT_ConstSetMultiple,
-        SWIFFT_ConstAdd, SWIFFT_ConstAddMultiple,
-        SWIFFT_ConstSub, SWIFFT_ConstSubMultiple,
-        SWIFFT_ConstMul, SWIFFT_ConstMulMultiple
-    },
-    buffer:: {Output, Outputs}
+use crate::sys::{
+    SWIFFT_Set, SWIFFT_SetMultiple, SWIFFT_Add, SWIFFT_AddMultiple, SWIFFT_ConstAdd,
+    SWIFFT_ConstAddMultiple, SWIFFT_ConstMul, SWIFFT_ConstMulMultiple, SWIFFT_ConstSet,
+    SWIFFT_ConstSetMultiple, SWIFFT_ConstSub, SWIFFT_ConstSubMultiple, SWIFFT_Mul,
+    SWIFFT_MulMultiple, SWIFFT_Sub, SWIFFT_SubMultiple
 };
+use crate::buffer::{Output, Outputs};
 
 /// Sets a SWIFFT hash value to another, element-wise.
 /// 

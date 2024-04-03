@@ -1,9 +1,11 @@
 use std::fmt::{Display, Formatter};
 use std::iter::Sum;
 use std::ops::{Add, AddAssign, Index, Mul, Neg, Sub, SubAssign};
-use crate::reference::constant::{INPUT_BLOCK_SIZE, M, N, P};
+use num_traits::Inv;
+use crate::constant::{INPUT_BLOCK_SIZE, M, N, P};
+use crate::z257::Z257;
 
-/// Element of polynomial ring ***Z_[`P`] (A)/(A+1)***
+/// Element of polynomial ring ***[`Z257`] (A)/(A+1)***
 #[derive(Eq, Copy, Debug)]
 pub struct Polynomial {
     coefficients: [u16; N]
@@ -55,6 +57,15 @@ impl Polynomial {
     pub fn coefficients(&self) -> &[u16; N] {
         &self.coefficients
     }
+    
+    /// Computes the Hadamard (point-wise) product of the coefficient vector
+    pub fn hadamard_product(&self, rhs: &Self) -> Self {
+        let mut hadamard_product = [0; N];
+        for i in 1..N {
+            hadamard_product[i] = (self[i] * rhs[i]) % Z257::P as u16
+        }
+        Self { coefficients: hadamard_product }
+    }
 
     /// Increments the power of every ***a*** in this polynomial by 1,
     /// and reduces it modulo ***a^[`N`] + 1***, returning the result
@@ -98,6 +109,46 @@ impl Polynomial {
             toeplitz_matrix[i] = toeplitz_matrix[i-1].increment_power()
         }
         toeplitz_matrix
+    }
+    
+    pub fn correct_multiply(&self, rhs: &Self) -> Self { // this performs the transformation correctly
+        &self.toeplitz_matrix() * rhs
+    }
+    
+    pub fn fft_multiply(&self, rhs: &Polynomial) -> Polynomial {
+        // powers of OMEGA_ORDER_128 (should be precomputed)
+        let mut omega_powers: [u16; N] = [0; N];
+        omega_powers[0] = 1;
+        for i in 1..N {
+            omega_powers[i] = (omega_powers[i-1] * Z257::OMEGA_ORDER_128) % Z257::P as u16;
+        }
+        let omega_polynomial = Self { coefficients: omega_powers };
+        
+        // preprocess `self` and `rhs`
+        let mut self_processed = self.hadamard_product(&omega_polynomial).coefficients.map(|value| {Z257::new(value)});
+        let mut rhs_processed = rhs.hadamard_product(&omega_polynomial).coefficients.map(|value| {Z257::new(value)});
+        
+        // compute `N`-dimensional FFT of processed vectors
+        halo2_proofs::arithmetic::best_fft::<Z257, Z257>(&mut self_processed, Z257::OMEGA_ORDER_64.into(), N.ilog2());
+        halo2_proofs::arithmetic::best_fft::<Z257, Z257>(&mut rhs_processed, Z257::OMEGA_ORDER_64.into(), N.ilog2());
+        
+        // compute point-wise product (modulo 257)
+        let mut product_fft = self_processed;
+        for i in 0..N {
+            product_fft[i] *= rhs_processed[i];
+        }
+        
+        // compute `N`-dimensional IFFT of result
+        for i in 0..N {
+            product_fft[i] /= Z257::new(omega_powers[i]);
+        }
+        halo2_proofs::arithmetic::best_fft::<Z257, Z257>(&mut product_fft, Z257::new(Z257::OMEGA_ORDER_64).inv().unwrap(), N.ilog2());
+        for mut value in product_fft {
+            value /= Z257::new(N as u16);
+        }
+        
+        // turn back into polynomial
+        Self { coefficients: product_fft.map(|value| { value.into() }) }
     }
 }
 
@@ -230,7 +281,7 @@ impl Mul<&Polynomial> for &[Polynomial; N] {
 
 impl Mul for &Polynomial {
     type Output = Polynomial;
-    fn mul(self, rhs: Self) -> Self::Output {
-        &self.toeplitz_matrix() * rhs
+    fn mul(self, rhs: Self) -> Self::Output { // THIS IS INCORRECT, the correct multiply is 
+        self.fft_multiply(rhs)
     }
 }

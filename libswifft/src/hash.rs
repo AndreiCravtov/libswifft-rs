@@ -4,18 +4,12 @@
 //! 0th pos = 0th power of polynomial
 //! 0th pos = 0th power of 257
 
-use super::{
-    bindgen_ffi::{
-        SWIFFT_Compute, SWIFFT_ComputeMultiple,
-        SWIFFT_ComputeSigned, SWIFFT_ComputeMultipleSigned,
-        SWIFFT_Compact, SWIFFT_CompactMultiple
-    },
-    buffer:: {
-        Input, Inputs,
-        SignInput, SignInputs,
-        Output, Outputs,
-        CompactOutput, CompactOutputs
-    }
+use crate::sys::{
+    SWIFFT_Compact, SWIFFT_CompactMultiple, SWIFFT_Compute, SWIFFT_ComputeMultiple,
+    SWIFFT_ComputeMultipleSigned, SWIFFT_ComputeSigned
+};
+use crate::buffer::{
+    CompactOutput, CompactOutputs, Input, Inputs, Output, Outputs, SignInput, SignInputs
 };
 
 /// Computes the result of a SWIFFT operation.

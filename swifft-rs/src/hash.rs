@@ -1,5 +1,5 @@
-use crate::reference::constant::{M, MULTIPLIER_POLYNOMIALS};
-use crate::reference::polynomial::Polynomial;
+use crate::constant::{M, MULTIPLIER_POLYNOMIALS};
+use crate::polynomial::Polynomial;
 
 /// Hashes a standard hash input, produces a standard hash
 pub fn swifft_hash(input: &[Polynomial; M]) -> Polynomial {
