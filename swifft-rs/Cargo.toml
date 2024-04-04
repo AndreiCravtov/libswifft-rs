@@ -12,8 +12,9 @@ rustdoc-args = [ "--html-in-header", "docs-header.html" ]
 [dependencies]
 num-traits = "0.2.18"
 ff = { version = "0.13.0", features = ["derive"] }
+rayon = "1.10.0"
 halo2_proofs = "0.3.0"
 
 # get rid of later
 rand = "0.9.0-alpha.1"
-rayon = "1.10.0"
+const_panic = { version = "0.2.8", features = ["derive"] }

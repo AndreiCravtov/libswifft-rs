@@ -49,7 +49,6 @@ pub const fn parse_input_block(input: &[u8; INPUT_BLOCK_SIZE]) -> SwifftInput {
     input_polynomials
 }
 
-
 // SWIFFT HASH FUNCTION
 /// Type alias representing the input to the SWIFFT hash function
 pub type SwifftInput = [Polynomial; M];
@@ -57,24 +56,26 @@ pub type SwifftInput = [Polynomial; M];
 /// Standard SWIFFT hash function, processing a single input
 pub fn swifft_hash(input: &SwifftInput) -> Polynomial {
     // Compute 16 individual Polynomial products A_i * X_i
-    let mut products = input.clone();
-    products.par_iter_mut().enumerate()
+    // in the Fourier coefficients representation
+    let mut product_fourier_coefficients = input.clone();
+    product_fourier_coefficients.par_iter_mut().enumerate()
         .for_each(|(i, input)| {
             // compute Fourier coefficients of input
             input.fourier_coefficients_assign();
 
             // compute hadamard product of input and multiplier Fourier coefficients
             input.hadamard_product_assign(&MULTIPLIER_FOURIER_COEFFICIENTS[i]);
-
-            // interpolate resulting Fourier coefficients
-            input.interpolate_fourier_coefficients_assign()
         });
     
     // Compute linear combination of those products
     let mut digest = Polynomial::ZERO;
-    for product in products {
+    for product in product_fourier_coefficients {
         digest += product
     }
+    
+    // interpolate resulting Fourier coefficients,
+    // and return result
+    digest.interpolate_fourier_coefficients_assign();
     digest
 }
 

@@ -1,7 +1,8 @@
+use std::fmt::{Debug, Display, Formatter};
 use std::iter::Sum;
 use std::ops::{Add, AddAssign, Index, Mul, MulAssign, Neg, Sub, SubAssign};
-use rayon::prelude::*;
 
+use rayon::prelude::*;
 
 use crate::z257::Z257;
 
@@ -24,7 +25,7 @@ impl Polynomial {
     pub const fn new(coefficients: Coefficients) -> Self {
         Self(coefficients)
     }
-    
+
     /// Creates new polynomial from the coefficients provided
     pub const fn from_coefficients(coefficients: &[u16; Self::N]) -> Self {
         let mut values: Coefficients = [Z257::ZERO; Self::N];
@@ -61,7 +62,7 @@ impl Polynomial {
         }
         result
     }
-    
+
     pub const fn cn_add(&self, rhs: &Self) -> Self {
         let mut result = Polynomial::ZERO;
         let mut i = 0; while i < Self::N {
@@ -70,7 +71,7 @@ impl Polynomial {
         }
         result
     }
-    
+
     pub const fn cn_sub(&self, rhs: &Self) -> Self {
         let mut result = Polynomial::ZERO;
         let mut i = 0; while i < Self::N {
@@ -79,7 +80,7 @@ impl Polynomial {
         }
         result
     }
-    
+
     pub const fn scalar_mul(&self, scalar: &Z257) -> Self {
         let mut result = Polynomial::ZERO;
         let mut i = 0; while i < Self::N {
@@ -141,7 +142,7 @@ impl Polynomial {
     pub const fn toeplitz_matrix(&self) -> Matrix {
         let mut toeplitz_matrix = [Self::ZERO; Self::N];
         toeplitz_matrix[0] = *self;
-        let mut i = 0; while i < Self::N {
+        let mut i = 1; while i < Self::N {
             toeplitz_matrix[i] = toeplitz_matrix[i-1].increment_power();
             i += 1
         }
@@ -153,10 +154,14 @@ impl Polynomial {
     /// Treats the polynomials in `lhs` as columns of the matrix;
     /// treats the coefficients of `rhs` as a column vector;
     /// the result should be interpreted as a column vector
+
     pub const fn matrix_mul_col_vec(lhs: &Matrix, rhs: &Self) -> Self {
         let mut product: Coefficients = [Z257::ZERO; Self::N];
         let mut row = 0; while row < Self::N {
             let mut column = 0; while column < Self::N {
+                if lhs[column].0[row].value() > 256 || rhs.0[column].value() > 256 {
+                    panic!("AAAA")
+                }
                 product[row] = product[row].cn_add(
                     &lhs[column].0[row].cn_mul(&rhs.0[column]));
                 column += 1
@@ -216,8 +221,8 @@ impl Polynomial {
         }
         self.0[0] = rotated_coefficient
     }
-    
-    
+
+
     /// Evaluates the polynomial at [`Polynomial::N`] ascending odd powers of [`Z257::OMEGA_ORDER_128`],
     /// which is $\omega_{128}, \omega_{128}^3, \dots, \omega_{128}^{127}$,
     /// and returns the resulting coefficient
@@ -258,29 +263,27 @@ impl Polynomial {
 
     /// Interpolates the Fourier coefficients back into a polynomial
     ///
-    /// Equivalent to undoing the isomorphism 
+    /// Equivalent to undoing the isomorphism
     /// $$\left(\mathbb{Z}\_{257}\[\alpha\]/(\alpha^{64}+1), +, * \right) \cong \left(\mathbb{Z}_{257}^{64}, +, \circ \right)$$
     pub fn interpolate_fourier_coefficients_assign(&mut self) {
-        // multiply point-wise by [`OMEGA_ORDER_128_INV_POWERS`]
         // and compute [`N`]-dimensional inverse FFT of the result
-        self.hadamard_product_assign(&Self::OMEGA_ORDER_128_INV_POWERS);
         halo2_proofs::arithmetic::best_fft::<Z257, Z257>(
             &mut self.0, Self::OMEGA_ORDER_64_INV, Self::LOG2_N);
 
-        // scale the result by [`N_INV`]
-        self.scalar_mul_assign(&Self::N_INV);
+        // normalise the result, to get back the original polynomial
+        self.hadamard_product_assign(&Self::FOURIER_NORMALISATION_COEFFICIENTS);
     }
 
     /// Performs the FFT algorithm for multiplying polynomials
     #[inline]
-    pub fn fft_multiply(&self, rhs: &Self) -> Self {
+    pub fn fft_mul(&self, rhs: &Self) -> Self {
         let mut product = self.clone();
-        product.fft_multiply_assign(rhs);
+        product.fft_mul_assign(rhs);
         product
     }
 
     /// Performs the FFT algorithm for multiplying polynomials
-    pub fn fft_multiply_assign(&mut self, rhs: &Self) {
+    pub fn fft_mul_assign(&mut self, rhs: &Self) {
         // compute fourier coefficients of both
         self.fourier_coefficients_assign();
         let rhs_coefficients = rhs.fourier_coefficients();
@@ -298,7 +301,6 @@ impl Polynomial {
     /// which is [`Polynomial::N`]`-1`
     pub const N: usize = 64;
     pub const LOG2_N: u32 = Self::N.ilog2();
-    pub const N_INV: Z257 = Z257::new(Self::N as u16).cn_inv();
 
 
     /// The zero polynomial, with all coefficients being ***0***
@@ -314,16 +316,34 @@ impl Polynomial {
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     ]);
 
+    /// The $\alpha$ polynomial
+    pub const ALPHA: Self = Self::from_coefficients(&[
+        0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    ]);
+
     /// The inverse element of [`Z257::OMEGA_ORDER_64`]
     pub const OMEGA_ORDER_64_INV: Z257 = Z257::OMEGA_ORDER_64.cn_inv();
 
     /// The polynomial whose coefficients are ascending powers of [`Z257::OMEGA_ORDER_128`],
     /// which is $0, \omega_{128}, \omega_{128}^2, \dots, \omega_{128}^{63}$
     pub const OMEGA_ORDER_128_POWERS: Self = Self::from_point_powers(&Z257::OMEGA_ORDER_128);
+    
+    /// Coefficients that are used to normalise the result of applying the inverse Fourier transform
+    /// to get back the original polynomial. Computed by finding the polynomial whose coefficients are
+    /// ascending powers of the ***inverse*** of [`Z257::OMEGA_ORDER_128`], which is $0, \omega_{128}^{-1}, \omega_{128}^{-2}, \dots, \omega_{128}^{-63}$,
+    /// and scaling it by the inverse of [`Z257::OMEGA_ORDER_64`]
+    pub const FOURIER_NORMALISATION_COEFFICIENTS: Self = Self::from_point_powers(
+        &Z257::OMEGA_ORDER_128.cn_inv()).scalar_mul(&Z257::new(Self::N as u16).cn_inv());
+}
 
-    /// The polynomial whose coefficients are ascending powers of the ***inverse*** of [`Z257::OMEGA_ORDER_128`],
-    /// which is $0, \omega_{128}^{-1}, \omega_{128}^{-2}, \dots, \omega_{128}^{-63}$
-    pub const OMEGA_ORDER_128_INV_POWERS: Self = Self::from_point_powers(&Z257::OMEGA_ORDER_128.cn_inv());
+impl Display for Polynomial {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{:?}", self.0))
+    }
 }
 
 impl<'a> Into<Polynomial> for &'a Polynomial {
@@ -385,9 +405,9 @@ impl<T: Into<Self>> SubAssign<T> for Polynomial {
     }
 }
 
-impl<T: Into<Z257>> Mul<T> for Polynomial {
+impl Mul<Z257> for Polynomial {
     type Output = Polynomial;
-    fn mul(self, rhs: T) -> Self::Output {
+    fn mul(self, rhs: Z257) -> Self::Output {
         self.scalar_mul(&rhs.into())
     }
 }
@@ -419,15 +439,15 @@ impl Mul<&Polynomial> for &Matrix {
     }
 }
 
-impl<T: Into<Self>> Mul<T> for &Polynomial {
+impl<T: Into<Self>> Mul<T> for Polynomial {
     type Output = Polynomial;
     fn mul(self, rhs: T) -> Self::Output {
-        self.fft_multiply(rhs.into())
+        self.fft_mul(&rhs.into())
     }
 }
 
 impl<T: Into<Self>> MulAssign<T> for Polynomial {
     fn mul_assign(&mut self, rhs: T) {
-        self.fft_multiply_assign(&rhs.into())
+        self.fft_mul_assign(&rhs.into())
     }
 }

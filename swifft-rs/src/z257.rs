@@ -1,5 +1,5 @@
 use std::convert::Into;
-use std::fmt::{Debug, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use std::ops::{Rem, RemAssign, Neg, Add, AddAssign, Sub, SubAssign, Mul, MulAssign, Div, DivAssign};
 use std::iter::{Product, Sum};
 use num_traits::{CheckedDiv, Pow, Inv, Bounded, Zero, ConstZero, ConstOne, One, Num, Unsigned};
@@ -72,7 +72,7 @@ impl Z257 {
     pub const fn cn_sub(&self, rhs: &Self) -> Self {
         Self(Self::SUB[self.0 as usize][rhs.0 as usize])
     }
-
+    
     #[inline]
     pub const fn cn_mul(&self, rhs: &Self) -> Self {
         Self(Self::MUL[self.0 as usize][rhs.0 as usize])
@@ -80,7 +80,7 @@ impl Z257 {
     
     #[inline]
     pub const fn cn_div(&self, rhs: &Self) -> Self {
-        if self.cn_is_zero() {
+        if rhs.cn_is_zero() {
             panic!("Cannot divide by zero")
         } else {
             Self(Self::MUL[self.0 as usize][Self::INV[rhs.0 as usize] as usize])
@@ -89,7 +89,7 @@ impl Z257 {
 
     #[inline]
     pub const fn cn_checked_div(&self, rhs: &Self) -> Option<Self> {
-        if self.cn_is_zero() {
+        if rhs.cn_is_zero() {
             None
         } else { 
             Some(Self(Self::MUL[self.0 as usize][Self::INV[rhs.0 as usize] as usize]))
@@ -127,7 +127,7 @@ impl Z257 {
 
     #[inline]
     pub fn checked_div_assign(&mut self, rhs: &Self) -> Option<()> {
-        if self.cn_is_zero() {
+        if rhs.cn_is_zero() {
             None
         } else {
             self.0 = Self::MUL[self.0 as usize][Self::INV[rhs.0 as usize] as usize];
@@ -212,7 +212,7 @@ impl Z257 {
     const NEG: [u16; Self::P] = Self::compute_neg(); const fn compute_neg() -> [u16; Self::P] {
         let mut neg: [u16; Self::P] = [0; Self::P];
         let mut n = 0; while n < Self::P {
-            neg[n] = (Self::P - n) as u16;
+            neg[n] = ((Self::P - n) % Self::P) as u16;
             n += 1
         }
         neg
@@ -332,6 +332,13 @@ impl From<u64> for Z257 {
     #[inline]
     fn from(value: u64) -> Self {
         Self::from_u64(value)
+    }
+}
+
+impl Display for Z257 {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{}", self.0))
     }
 }
 
@@ -460,10 +467,11 @@ impl<T: Into<Self>> DivAssign<T> for Z257 {
     /// This will panic if dividing by zero.
     #[inline]
     fn div_assign(&mut self, rhs: T) {
-        if self.cn_is_zero() {
+        let rhs = rhs.into();
+        if rhs.cn_is_zero() {
             panic!("Cannot divide by zero")
         } else {
-            self.0 = Self::MUL[self.0 as usize][Self::INV[rhs.into().0 as usize] as usize]
+            self.0 = Self::MUL[self.0 as usize][Self::INV[rhs.0 as usize] as usize]
         }
     }
 }
