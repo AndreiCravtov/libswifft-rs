@@ -7,7 +7,7 @@ pub mod polynomial;
 pub mod z257;
 pub mod fft;
 
-fn main() {
-    let a = parse_input_block(&[random(); INPUT_BLOCK_SIZE]);
-    swifft_hash(&a);
-}
+// fn main() {
+//     let a = parse_input_block(&[random(); INPUT_BLOCK_SIZE]);
+//     swifft_hash(&a);
+// }
