@@ -59,12 +59,28 @@ pub fn swifft_hash_naive(input: &SwifftInput) -> Polynomial {
 }
 
 pub fn swifft_hash_fft_simple(input: &SwifftInput) -> Polynomial {
-    // compute linear combination of products a_i * x_i
-    let mut hash_polynomial = Polynomial::ZERO;
-    for i in 0..M {
-        hash_polynomial += MULTIPLIER_POLYNOMIALS[i] * input[i]
+    // Compute 16 individual Polynomial products A_i * X_i
+    // in the Fourier coefficients representation
+    let mut product_fourier_coefficients = input.clone();
+    product_fourier_coefficients.iter_mut().enumerate()
+        .for_each(|(i, input)| {
+            // compute Fourier coefficients of input
+            input.fourier_coefficients_assign();
+
+            // compute hadamard product of input and multiplier Fourier coefficients
+            input.hadamard_product_assign(&MULTIPLIER_FOURIER_COEFFICIENTS[i]);
+        });
+
+    // Compute linear combination of those products
+    let mut digest = Polynomial::ZERO;
+    for product in product_fourier_coefficients {
+        digest += product
     }
-    hash_polynomial
+
+    // interpolate resulting Fourier coefficients,
+    // and return result
+    digest.interpolate_fourier_coefficients_assign();
+    digest
 }
 
 // SWIFFT HASH FUNCTION

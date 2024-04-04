@@ -2,8 +2,6 @@ use std::fmt::{Debug, Display, Formatter};
 use std::iter::Sum;
 use std::ops::{Add, AddAssign, Index, Mul, MulAssign, Neg, Sub, SubAssign};
 
-use rayon::prelude::*;
-
 use crate::z257::Z257;
 
 /// Element of polynomial quotient ring $\mathbb{Z}_{257}[\alpha]/(\alpha^{64} + 1)$
@@ -199,14 +197,16 @@ impl Polynomial {
     }
 
     pub fn scalar_mul_assign(&mut self, scalar: &Z257) {
-        self.0.par_iter_mut()
-            .for_each(|c| c.mul_assign(scalar));
+        for i in 0..Self::N {
+            self.0[i] *= scalar
+        }
     }
 
     /// Computes the Hadamard (point-wise) product of `self` and `rhs` coefficients
     pub fn hadamard_product_assign(&mut self, rhs: &Self) {
-        self.0.par_iter_mut().enumerate()
-            .for_each(|(i, c)| c.mul_assign(rhs[i]));
+        for i in 0..Self::N {
+            self.0[i] *= rhs[i]
+        }
     }
 
     /// Increments the power of every $\alpha$ in this polynomial by $1$,
@@ -377,9 +377,9 @@ impl<T: Into<Self>> Add<T> for Polynomial {
 impl<T: Into<Self>> AddAssign<T> for Polynomial {
     fn add_assign(&mut self, rhs: T) {
         let rhs = rhs.into();
-        self.0.par_iter_mut().enumerate().for_each(|(i, c)| {
-            c.add_assign(rhs[i])
-        })
+        for i in 0..Self::N {
+            self.0[i] += rhs[i]
+        }
     }
 }
 
