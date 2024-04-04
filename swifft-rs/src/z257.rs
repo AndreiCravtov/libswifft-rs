@@ -60,22 +60,35 @@ impl Z257 {
     
     #[inline]
     pub const fn cn_neg(&self) -> Self {
-        Self(Self::NEG[self.0 as usize])
+        if self.cn_is_zero() {
+            Self::ZERO
+        } else { 
+            Self(Self::P - self.0)
+        }
     }
-
+    
     #[inline]
     pub const fn cn_add(&self, rhs: &Self) -> Self {
-        Self(Self::ADD[self.0 as usize][rhs.0 as usize])
+        let result = self.0 + rhs.0;
+        if result >= Self::P {
+            Self(result - Self::P)
+        } else { 
+            Self(result)
+        }
     }
 
     #[inline]
     pub const fn cn_sub(&self, rhs: &Self) -> Self {
-        Self(Self::SUB[self.0 as usize][rhs.0 as usize])
+        if self.0 >= rhs.0 {
+            Self(self.0 - rhs.0)
+        } else { 
+            Self(self.0 + Self::P - rhs.0)
+        }
     }
-    
+
     #[inline]
     pub const fn cn_mul(&self, rhs: &Self) -> Self {
-        Self(Self::MUL[self.0 as usize][rhs.0 as usize])
+        Self(((self.0 as u32 * rhs.0 as u32) % Self::P as u32) as u16)
     }
     
     #[inline]
@@ -83,7 +96,7 @@ impl Z257 {
         if rhs.cn_is_zero() {
             panic!("Cannot divide by zero")
         } else {
-            Self(Self::MUL[self.0 as usize][Self::INV[rhs.0 as usize] as usize])
+            Self(((self.0 as u32 * Self::INV[rhs.0 as usize] as u32) % Self::P as u32) as u16)
         }
     }
 
@@ -92,7 +105,7 @@ impl Z257 {
         if rhs.cn_is_zero() {
             None
         } else { 
-            Some(Self(Self::MUL[self.0 as usize][Self::INV[rhs.0 as usize] as usize]))
+            Some(Self(((self.0 as u32 * Self::INV[rhs.0 as usize] as u32) % Self::P as u32) as u16))
         }
     }
 
@@ -110,6 +123,7 @@ impl Z257 {
         }
     }
 
+
     #[inline]
     pub const fn cn_inv_checked(&self) -> Option<Self> {
         if self.cn_is_zero() {
@@ -122,7 +136,11 @@ impl Z257 {
     // NON-CONSTANT OPS
     #[inline]
     pub fn neg_assign(&mut self) {
-        self.0 = Self::NEG[self.0 as usize]
+        self.0 = if self.cn_is_zero() {
+            0
+        } else {
+            Self::P - self.0
+        }
     }
 
     #[inline]
@@ -130,7 +148,7 @@ impl Z257 {
         if rhs.cn_is_zero() {
             None
         } else {
-            self.0 = Self::MUL[self.0 as usize][Self::INV[rhs.0 as usize] as usize];
+            self.0 = ((self.0 as u32 * Self::INV[rhs.0 as usize] as u32) % Self::P as u32) as u16;
             Some(())
         }
     }
@@ -163,7 +181,7 @@ impl Z257 {
 // STRUCT CONSTS
 impl Z257 {
     // PUBLIC CONSTANTS
-    pub const P: usize = 257;
+    pub const P: u16 = 257;
     
     // NUMBER CONSTS
     pub const ZERO: Self = Self(0);
@@ -209,73 +227,32 @@ impl Z257 {
     pub const OMEGA_ORDER_2: Self = Self::OMEGA_ORDER_4.cn_pow(&Self::TWO);
     
     // PRIVATE CONSTANTS
-    const NEG: [u16; Self::P] = Self::compute_neg(); const fn compute_neg() -> [u16; Self::P] {
-        let mut neg: [u16; Self::P] = [0; Self::P];
+    const POW: [[u16; Self::P as usize]; Self::P as usize] = Self::compute_pow(); const fn compute_pow() -> [[u16; Self::P as usize]; Self::P as usize] {
+        let mut pow: [[u16; Self::P as usize]; Self::P as usize] = [[0; Self::P as usize]; Self::P as usize];
         let mut n = 0; while n < Self::P {
-            neg[n] = ((Self::P - n) % Self::P) as u16;
-            n += 1
-        }
-        neg
-    }
-    const ADD: [[u16; Self::P]; Self::P] = Self::compute_add(); const fn compute_add() -> [[u16; Self::P]; Self::P] {
-        let mut add: [[u16; Self::P]; Self::P] = [[0; Self::P]; Self::P];
-        let mut n = 0; while n < Self::P {
-            let mut m = 0; while m < Self::P {
-                add[n][m] = ((n + m) % Self::P) as u16;
-                m += 1
-            }
-            n += 1
-        }
-        add
-    }
-    const SUB: [[u16; Self::P]; Self::P] = Self::compute_sub(); const fn compute_sub() -> [[u16; Self::P]; Self::P] {
-        let mut sub: [[u16; Self::P]; Self::P] = [[0; Self::P]; Self::P];
-        let mut n = 0; while n < Self::P {
-            let mut m = 0; while m < Self::P {
-                sub[n][m] = ((n + Self::P - m) % Self::P) as u16;
-                m += 1
-            }
-            n += 1
-        }
-        sub
-    }
-    const MUL: [[u16; Self::P]; Self::P] = Self::compute_mul(); const fn compute_mul() -> [[u16; Self::P]; Self::P] {
-        let mut mul: [[u16; Self::P]; Self::P] = [[0; Self::P]; Self::P];
-        let mut n = 0; while n < Self::P {
-            let mut m = 0; while m < Self::P {
-                mul[n][m] = ((n as u32 * m as u32) % Self::P as u32) as u16;
-                m += 1
-            }
-            n += 1
-        }
-        mul
-    }
-    const POW: [[u16; Self::P]; Self::P] = Self::compute_pow(); const fn compute_pow() -> [[u16; Self::P]; Self::P] {
-        let mut pow: [[u16; Self::P]; Self::P] = [[0; Self::P]; Self::P];
-        let mut n = 0; while n < Self::P {
-            pow[n][0] = 1;
+            pow[n  as usize][0] = 1;
             let mut i = 1; while i < Self::P {
-                pow[n][i] = ((pow[n][i - 1] as u32 * n as u32) % (Self::P as u32)) as u16;
+                pow[n  as usize][i  as usize] = ((pow[n  as usize][(i - 1)  as usize] as u32 * n as u32) % (Self::P as u32)) as u16;
                 i += 1
             }
             n += 1
         }
         pow
     }
-    const INV: [u16; Self::P] = Self::compute_invert(); const fn compute_invert() -> [u16; Self::P] {
-        let mut invert: [u16; Self::P] = [0; Self::P];
+    const INV: [u16; Self::P as usize] = Self::compute_invert(); const fn compute_invert() -> [u16; Self::P as usize] {
+        let mut invert: [u16; Self::P as usize] = [0; Self::P as usize];
         let mut n = 0; while n < Self::P {
-            invert[n] = Self::POW[n][Self::P - 2];
+            invert[n  as usize] = Self::POW[n  as usize][(Self::P as usize) - 2];
             n += 1
         }
         invert
     }
-    const SQRT: [Option<u16>; Self::P] = Self::compute_sqrt(); const fn compute_sqrt() -> [Option<u16>; Self::P] {
-        let mut sqrt: [Option<u16>; Self::P] = [None; Self::P];
+    const SQRT: [Option<u16>; Self::P as usize] = Self::compute_sqrt(); const fn compute_sqrt() -> [Option<u16>; Self::P as usize] {
+        let mut sqrt: [Option<u16>; Self::P as usize] = [None; Self::P as usize];
         let mut n = 0; while n < Self::P {
             let mut m = 0; while m < Self::P {
-                if Self::POW[m][2] == n as u16 {
-                    sqrt[n] = Some(m as u16);
+                if Self::POW[m  as usize][2] == n {
+                    sqrt[n  as usize] = Some(m);
                 }
                 m += 1
             }
@@ -397,7 +374,11 @@ impl<T: Into<Self>> Add<T> for Z257 {
 impl<T: Into<Self>> AddAssign<T> for Z257 {
     #[inline]
     fn add_assign(&mut self, rhs: T) {
-        self.0 = Self::ADD[self.0 as usize][rhs.into().0 as usize]
+        let rhs = rhs.into();
+        self.0 += rhs.0;
+        if self.0 >= Self::P {
+            self.0 -= Self::P
+        }
     }
 }
 
@@ -412,7 +393,12 @@ impl<T: Into<Self>> Sub<T> for Z257 {
 impl<T: Into<Self>> SubAssign<T> for Z257 {
     #[inline]
     fn sub_assign(&mut self, rhs: T) {
-        self.0 = Self::SUB[self.0 as usize][rhs.into().0 as usize]
+        let rhs = rhs.into();
+        if self.0 >= rhs.0 {
+            self.0 -= rhs.0
+        } else {
+            self.0 += Self::P - rhs.0
+        }
     }
 }
 
@@ -434,7 +420,7 @@ impl<T: Into<Self>> Mul<T> for Z257 {
 impl<T: Into<Self>> MulAssign<T> for Z257 {
     #[inline]
     fn mul_assign(&mut self, rhs: T) {
-        self.0 = Self::MUL[self.0 as usize][rhs.into().0 as usize]
+        self.0 = ((self.0 as u32 * rhs.into().0 as u32) % Self::P as u32) as u16
     }
 }
 
@@ -471,7 +457,7 @@ impl<T: Into<Self>> DivAssign<T> for Z257 {
         if rhs.cn_is_zero() {
             panic!("Cannot divide by zero")
         } else {
-            self.0 = Self::MUL[self.0 as usize][Self::INV[rhs.0 as usize] as usize]
+            self.0 = ((self.0 as u32 * Self::INV[rhs.0 as usize] as u32) % Self::P as u32) as u16
         }
     }
 }
@@ -494,14 +480,14 @@ impl<T: Into<Self>> Pow<T> for Z257 {
 }
 
 impl Inv for Z257 {
-    type Output = Option<Self>;
+    type Output = Self;
 
     /// Unary operator for retrieving the multiplicative inverse, or reciprocal, of a value.
     ///
-    /// Returns the multiplicative inverse of `self`, or [`None`] if inverting zero.
+    /// This will panic if inverting zero.
     #[inline]
     fn inv(self) -> Self::Output {
-        self.cn_inv_checked()
+        self.cn_inv()
     }
 }
 
@@ -611,12 +597,12 @@ impl Field for Z257 {
 
     #[inline]
     fn double(&self) -> Self {
-        Self(Self::MUL[self.0 as usize][2])
+        *self * Self::TWO
     }
 
     #[inline]
     fn invert(&self) -> ff::derive::subtle::CtOption<Self> {
-        match self.inv() {
+        match self.cn_inv_checked() {
             Some(value) => ff::derive::subtle::CtOption::new(
                 value, ff::derive::subtle::Choice::from(1)),
             _ => ff::derive::subtle::CtOption::new(

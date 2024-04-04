@@ -1,7 +1,6 @@
 use std::fmt::{Debug, Display, Formatter};
 use std::iter::Sum;
 use std::ops::{Add, AddAssign, Index, Mul, MulAssign, Neg, Sub, SubAssign};
-use crate::fft::best_fft;
 
 use crate::z257::Z257;
 
@@ -247,7 +246,7 @@ impl Polynomial {
         // multiply point-wise by [`OMEGA_ORDER_128_POWERS`]
         // and compute [`N`]-dimensional FFT of the result
         self.hadamard_product_assign(&Self::OMEGA_ORDER_128_POWERS);
-        best_fft(
+        halo2_proofs::arithmetic::best_fft::<Z257, Z257>(
             &mut self.0, Z257::OMEGA_ORDER_64, Self::LOG2_N);
     }
 
@@ -268,7 +267,7 @@ impl Polynomial {
     /// $$\left(\mathbb{Z}\_{257}\[\alpha\]/(\alpha^{64}+1), +, * \right) \cong \left(\mathbb{Z}_{257}^{64}, +, \circ \right)$$
     pub fn interpolate_fourier_coefficients_assign(&mut self) {
         // and compute [`N`]-dimensional inverse FFT of the result
-        best_fft(
+        halo2_proofs::arithmetic::best_fft::<Z257, Z257>(
             &mut self.0, Self::OMEGA_ORDER_64_INV, Self::LOG2_N);
 
         // normalise the result, to get back the original polynomial
