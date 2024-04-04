@@ -49,6 +49,24 @@ pub const fn parse_input_block(input: &[u8; INPUT_BLOCK_SIZE]) -> SwifftInput {
     input_polynomials
 }
 
+pub fn swifft_hash_naive(input: &SwifftInput) -> Polynomial {
+    // compute linear combination of products a_i * x_i
+    let mut hash_polynomial = Polynomial::ZERO;
+    for i in 0..M {
+        hash_polynomial += MULTIPLIER_POLYNOMIALS[i].naive_mul(&input[i])
+    }
+    hash_polynomial
+}
+
+pub fn swifft_hash_fft_simple(input: &SwifftInput) -> Polynomial {
+    // compute linear combination of products a_i * x_i
+    let mut hash_polynomial = Polynomial::ZERO;
+    for i in 0..M {
+        hash_polynomial += MULTIPLIER_POLYNOMIALS[i] * input[i]
+    }
+    hash_polynomial
+}
+
 // SWIFFT HASH FUNCTION
 /// Type alias representing the input to the SWIFFT hash function
 pub type SwifftInput = [Polynomial; M];
